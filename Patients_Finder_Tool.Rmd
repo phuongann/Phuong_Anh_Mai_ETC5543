@@ -1,0 +1,72 @@
+---
+title: "Patients_Finder_Tool"
+author: "Phuong Anh Mai"
+date: "2024-09-17"
+output: html_document
+---
+
+
+```{r setup, echo = FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(patchwork)
+library(rpart)
+library(readr)
+library(dplyr)
+library(stringdist)
+library(yardstick)
+library(gridExtra)
+library(patchwork)
+library(mulgar)
+library(umap)
+library(GGally)
+library(tourr)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+library(ggfortify)
+library(readr)
+library(dplyr)
+library(magrittr)
+library(tidymodels)
+library(conflicted)
+library(mvtnorm)
+library(boot)
+library(nullabor)
+library(MASS)
+library(discrim)
+library(parsnip)
+library(detourr)
+library(crosstalk)
+library(colorspace)
+library(classifly)
+library(plotly)
+library(viridis)
+library(visdat)
+library(cowplot)
+library(broom)
+
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+conflicts_prefer(dplyr::slice)
+conflicts_prefer(viridis::viridis_pal)
+```
+
+```{r reading datasets, echo = FALSE, warning=FALSE, message = FALSE}
+waiting_list <- read_csv("data/new_waiting_list.csv")
+theatre_details <- read_csv("data/specific_surgery_details_2023_2024.csv")
+inpatient_episode <- read.csv("data/inpatient_episode.csv")
+surgery_patients <- read.csv("data/joined_data.csv")
+
+# summary(waiting_list)
+# glimpse(waiting_list)
+# glimpse(theatre_details)
+# glimpse(inpatient_episode)
+```
+
+# Assumption
+- Get the data from Covid period, the surgery duration is still hold, and it should be the same for other period of time as well.
+- Only consider adult patients ( > 17 years old)
+- Only case that determined as "Theatre" and without cancellation is listed
+
+
