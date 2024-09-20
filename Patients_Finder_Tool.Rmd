@@ -202,3 +202,122 @@ surgery_patients$OutOfTheatreDateTime <- as.POSIXct(surgery_patients$OutOfTheatr
 
 # glimpse(surgery_patients)
 ```
+
+# Feature engineering
+# Extract interesting features
+
+```{r surgery length}
+# Calculate real-time of surgery
+surgery_patients <- surgery_patients %>% 
+  mutate(SurgeryLength = round((difftime(OutOfTheatreDateTime, IntoTheatreDateTime, units = "mins")),4)) %>% 
+  mutate(SurgeryLength = as.numeric((SurgeryLength)))
+
+# Check data created
+# summary(surgery_patients$SurgeryLength)
+# Remove negative values and outliers
+surgery_patients <- surgery_patients %>% 
+  na.omit() %>% 
+  filter(SurgeryLength > 10) %>% 
+  filter(SurgeryLength < 600) %>% 
+  filter(PlannedTheatreTimeInMins > 10) %>% 
+  filter(PlannedTheatreTimeInMins < 600)
+```
+
+```{r}
+# Calculating Average Surgery Length by Age Group
+AverageSurgeryLength_age <- surgery_patients %>% 
+  group_by(AgeGroupAtDateOfRemoval) %>% 
+  summarise(AverageSurgeryLength_age = round(mean(SurgeryLength, na.rm = TRUE)))
+
+# Displaying the result
+AverageSurgeryLength_age %>%
+  kable("html", caption = "Average Surgery Length by Age Group") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = FALSE, 
+                font_size = 14) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
+  column_spec(2, color = "blue", background = "lightgrey") %>% 
+  add_header_above(c(" " = 1, "Average Length" = 1))  
+```
+
+
+```{r}
+# Calculate the average of SurgeryLength by specialty
+average_surgery_length <- surgery_patients %>%
+  group_by(WaitingListSpecialtyDesc) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))
+
+# Displaying the result
+average_surgery_length %>%
+  kable("html", caption = "Average Surgery Length by Specialty") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = FALSE, 
+                font_size = 14) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
+  column_spec(2, color = "blue", background = "lightgrey") %>% 
+  add_header_above(c(" " = 1, "Average Length" = 1))  
+```
+
+Filter out Surgery within 10 hours, as the longer surgery requested more complex estimation.
+```{r}
+# Calculating Waiting day variables and creating category for each group
+surgery_patients <- surgery_patients %>%
+  mutate(WaitingDays = as.numeric(round(difftime(SurgeryStartDateTime, WaitingStartDateTime, units = "days")))) %>%
+  mutate(WaitingCategory = case_when(
+    WaitingDays <= 30 ~ "Short",
+    WaitingDays > 30 & WaitingDays <= 90 ~ "Medium",
+    WaitingDays > 90 ~ "Long"
+  ))
+
+# Displaying the result
+surgery_patients$WaitingCategory %>%
+  head(10)
+```
+
+```{r}
+# Proportion under 1 year by Specialty
+proportion_within_1_year_by_specialty <- surgery_patients %>%
+  group_by(WaitingListSpecialtyDesc) %>%
+  summarise(Proportion = mean(WaitingDays <= 365))
+
+proportion_within_1_year_by_specialty
+```
+
+```{r}
+# Average waiting time for particular Specialty
+Average_waiting_day_by_specialty <- surgery_patients %>%
+  group_by(WaitingListSpecialtyDesc) %>%
+  summarise(Avearge_waiting_day = round(mean(WaitingDays)),
+            CaseCount = n()) 
+
+# Filter out significant case
+Average_waiting_day_by_specialty <- Average_waiting_day_by_specialty %>% 
+  filter(CaseCount > 10)
+
+# Displaying the result
+Average_waiting_day_by_specialty %>%
+  kable("html", caption = "Average Waiting Days by Specialty") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = FALSE, 
+                font_size = 14) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
+  column_spec(2, color = "blue", background = "lightgrey") %>% 
+  add_header_above(c(" " = 1, "Average Waiting Days" = 1, "Number of Case" = 1))  
+```
+
+```{r}
+# Calculate average surgeons operating time
+average_surgery_length_surgeons <- surgery_patients %>%
+  group_by(OperatingDrCarerName) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))
+```
+
+# Exploratory Data Analysis (EDA)
+## Checking the completeness of the data.
+```{r}
+p1 <- vis_dat(surgery_patients, `warn_large_data` = FALSE)
+
+p2 <- vis_dat(waiting_patients, `warn_large_data` = FALSE)
+
+plot_grid(p1, p2) 
+```
