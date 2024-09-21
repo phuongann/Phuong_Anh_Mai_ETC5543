@@ -321,3 +321,97 @@ p2 <- vis_dat(waiting_patients, `warn_large_data` = FALSE)
 
 plot_grid(p1, p2) 
 ```
+
+
+```{r visualize, echo = FALSE, warning=FALSE, message=FALSE}
+# Visualize the distribution of Planned Theatre Time
+a <- ggplot(surgery_patients, aes(x = PlannedTheatreTimeInMins)) +
+  geom_histogram(fill = "blue", color = "white", bins = 30) +
+  theme_minimal() +
+  labs(title = "Distribution of Planned Theatre Time in Minutes",
+       x = "Planned Theatre Time (mins)")
+
+# Visualize the distribution of Time Difference
+b <- ggplot(surgery_patients, aes(x = SurgeryLength)) +
+  geom_histogram( fill = "pink", color = "white", bins = 30) +
+  theme_minimal() +
+  labs(title = "Distribution of Surgery Time in Minutes",
+       x = "Operating Theatre Time (mins)")
+
+gridExtra::grid.arrange(a, b)
+```
+**Insights**
+Most case within range under 250, just a few outliers that are outside this range. Our goal is to improve this Planned Theatre Case.
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# Investigate relationships between Specialty and SurgeryLength
+ggplot() +
+  # Add geom_line using the average surgery length by specialty
+  geom_line(data = average_surgery_length, aes(x = AverageSurgeryLength, 
+                                               y = fct_reorder(WaitingListSpecialtyDesc, AverageSurgeryLength),
+                                               group = 1), color = "blue", size = 1) +
+   theme_minimal() +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
+  labs(title = "Average Surgery Length by Specialty",
+       x = "Average Surgery Length (mins)",
+       y = "Specialty")
+
+# Boxplot of SurgeryLength with an additional geom_line for average
+ggplot(surgery_patients, aes(x = SurgeryLength, y = fct_reorder(WaitingListSpecialtyDesc, SurgeryLength, .fun = median))) +
+  geom_boxplot(fill = "pink") +
+  
+  theme_minimal() +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
+  labs(title = "Surgery Length by Specialty",
+       x = "Surgery Length (mins)",
+       y = "Specialty")
+
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# Proportion of people in waiting within 1 year
+proportion_within_1_year <- surgery_patients %>%
+  summarise(Proportion = mean(WaitingDays <= 365))
+
+proportion_within_1_year
+```
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+ggplot(proportion_within_1_year_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, Proportion), y = Proportion)) +
+  geom_segment(aes(xend = reorder(WaitingListSpecialtyDesc, Proportion), y = 0, yend = Proportion), color = "grey") +
+  geom_point(size = 5, color = "lightblue") +
+  theme_minimal() +
+  labs(title = "Proportion of Patients Waiting Under 1 Year by Specialty",
+       x = "Specialty",
+       y = "Proportion") +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1))
+
+# fpp3::autoplot(proportion_within_1_year_by_specialty)
+```
+
+```{r avg_waiting_day, echo = FALSE, warning=FALSE, message=FALSE}
+# Selected case 
+Selected_case <- Average_waiting_day_by_specialty %>%
+  pull(WaitingListSpecialtyDesc)
+
+# Use case count to eliminate the Specialty with too low observation
+surgery_patients <- surgery_patients %>% 
+  filter(WaitingListSpecialtyDesc %in% Selected_case)
+
+p <- ggplot(Average_waiting_day_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, Avearge_waiting_day), y = Avearge_waiting_day)) +
+  geom_segment(aes(xend = reorder(WaitingListSpecialtyDesc, Avearge_waiting_day), y = 0, yend = Avearge_waiting_day), color = "grey") +
+  geom_point(aes(size = CaseCount), color = "lightblue")  +
+  theme_minimal() +
+  labs(title = "Average Waiting Day by Specialty",
+       x = "Specialty",
+       y = "Avearge waiting day") +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1))
+
+plotly_plot <- ggplotly(p)
+
+plotly_plot
+```
+
+Outlier: Paed Plastic Surgery
