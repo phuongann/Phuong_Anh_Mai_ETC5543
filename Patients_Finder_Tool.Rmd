@@ -415,3 +415,21 @@ plotly_plot
 ```
 
 Outlier: Paed Plastic Surgery
+
+# Model fitting
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+# Training and Testing sets
+surgery_patients_split <- initial_split(surgery_patients,
+                                        2/3,
+                                        strata = WaitingListSpecialtyDesc)
+
+train_data <- training(surgery_patients_split)
+test_data <- testing(surgery_patients_split)
+
+# Cross validation
+x_train <- train_data %>% select(-SurgeryLength)
+y_train <- train_data$SurgeryLength
+
+x_test <- test_data %>% select(-SurgeryLength)
+y_test <- test_data$SurgeryLength
+```
