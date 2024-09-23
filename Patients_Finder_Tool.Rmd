@@ -433,3 +433,23 @@ y_train <- train_data$SurgeryLength
 x_test <- test_data %>% select(-SurgeryLength)
 y_test <- test_data$SurgeryLength
 ```
+
+```{r eval = FALSE}
+# Fitting the model
+surgery_patients_spec <- decision_tree() %>% 
+  set_mode("classification") %>% 
+  set_engine("rpart")
+# check set_engine "randomForest" not working
+
+surgery_patients_fit <- surgery_patients_spec %>% 
+  fit(SurgeryLength ~ ., data = train_data) # change
+
+surgery_patients_fit 
+```
+
+```{r eval = FALSE}
+# Model evaluation
+pred_surgery <- predict(surgery_patients_fit, X_test)
+
+getRegressionErrors(surgery_patients_fit, y_test)
+```
