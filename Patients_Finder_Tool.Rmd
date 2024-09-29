@@ -724,175 +724,37 @@ ggpairs(
 # recheck
 ```
 
-# Model fitting
+# Fitting Model
+### Split data
 ```{r, echo = FALSE, warning=FALSE, message=FALSE}
-# Get all levels of the factor from the entire dataset
-all_levels <- levels(factor(surgery_patients$WaitingListSpecialtyDesc))
-
-# Set the levels for the factor in the dataset
-surgery_patients$WaitingListSpecialtyDesc <- factor(surgery_patients$WaitingListSpecialtyDesc, levels = all_levels)
-
-# Training and Testing sets
-# surgery_patients_split <- initial_split(surgery_patients,
-#                                        2/3,
-#                                        strata = WaitingListSpecialtyDesc)
-
-# train_data <- training(surgery_patients_split)
-# test_data <- testing(surgery_patients_split)
-
-# Creating Cross validation folds
 set.seed(123)
-surgery_folds <- vfold_cv(surgery_patients, v = 5, strata = WaitingListSpecialtyDesc)
-```
-```{r recipe, eval = FALSE}
-surgery_recipe <- recipe(SurgeryLength ~ AgeGroupAtDateOfRemoval + CurrentPriorityCode + WaitingListSpecialtyDesc +
-                           NumberOfSurgeries + WaitingDays + WaitingCategory, data = train_data) %>%
-  step_dummy(all_nominal_predictors()) %>%  # Convert factors to dummy variables
-  step_normalize(all_numeric_predictors())  # Normalize numeric predictors for lm model
-```
+# Training and Testing sets
+ surgery_patients_split <- initial_split(surgery_patients,
+                                        2/3,
+                                        strata = WaitingListSpecialtyDesc)
 
-```{r}
-# Fitting the model
-# Linear Regression
-lr_spec <- linear_reg() %>%
-  set_engine("lm")
+ train_data <- training(surgery_patients_split)
+ test_data <- testing(surgery_patients_split)
+    
+# Set consistent factor levels in train and test data
+age_levels <- levels(train_data$AgeGroupAtDateOfRemoval)
+priority_levels <- levels(train_data$CurrentPriorityCode)
+specialty_levels <- levels(train_data$WaitingListSpecialtyDesc)
+ppp_category <- levels(train_data$PPPCategory)
+treament_campus_levels <- levels(train_data$TreatmentCampusName)
+planned_stay_levels <- levels(train_data$PlannedStayTypeDescription)
+admin_levels <- levels(train_data$AdminCategory)
 
-# Random Forest
-rf_spec <- rand_forest(mtry = tune(), trees = 500, min_n = tune()) %>%
-  set_engine("ranger") %>%
-  set_mode("regression")
-
-# Gradient Boosting
-gbm_spec <- boost_tree(mtry = tune(), trees = 500, learn_rate = 0.01 #Controls how much each tree contributes to the final model in boosting algorithm
-                       ) %>%
-  set_engine("xgboost") %>%
-  set_mode("regression")
-```
-
-```{r}
-# Linear Regression Workflow
-lr_workflow <- workflow() %>%
-  add_model(lr_spec) %>%
-  add_recipe(surgery_recipe)
-
-# Random Forest Workflow
-rf_workflow <- workflow() %>%
-  add_model(rf_spec) %>%
-  add_recipe(surgery_recipe)
-
-# Gradient Boosting Workflow
-gbm_workflow <- workflow() %>%
-  add_model(gbm_spec) %>%
-  add_recipe(surgery_recipe)
-```
-
-```{r}
-# Setting Hyperparameters tune
-# Random Forest Tuning Grid
-rf_grid <- grid_regular(
-  mtry(range = c(2, 10)),
-  min_n(range = c(5, 15)),
-  levels = 5
-)
-
-# Gradient Boosting Tuning Grid
-gbm_grid <- grid_regular(
-  mtry(range = c(2, 10)),
-  levels = 5
-)
-```
-
-
-```{r}
-# Fit Linear Regression with Cross-Validation
-lr_results <- fit_resamples(
-  lr_workflow,
-  resamples = surgery_folds,
-  metrics = metric_set(rmse),
-  control = control_resamples(save_pred = TRUE)
-)
-
-
-# Tune Random Forest Model
-rf_results <- tune_grid(
-  rf_workflow,
-  resamples = surgery_folds,
-  grid = rf_grid,
-  metrics = metric_set(rmse),
-  control = control_grid(save_pred = TRUE)
-)
-
-# Select Best Hyperparameters
-best_rf <- select_best(rf_results, "rmse")
-
-# Finalize Workflow with Best Hyperparameters
-final_rf_workflow <- finalize_workflow(rf_workflow, best_rf)
-
-# Tune Gradient Boosting Model
-gbm_results <- tune_grid(
-  gbm_workflow,
-  resamples = surgery_folds,
-  grid = gbm_grid,
-  metrics = metric_set(rmse),
-  control = control_grid(save_pred = TRUE)
-)
-
-# Select Best Hyperparameters
-best_gbm <- select_best(gbm_results, "rmse")
-
-# Finalize Workflow with Best Hyperparameters
-final_gbm_workflow <- finalize_workflow(gbm_workflow, best_gbm)
+test_data <- test_data %>%
+  mutate(
+    AgeGroupAtDateOfRemoval = factor(AgeGroupAtDateOfRemoval, levels = age_levels),
+    CurrentPriorityCode = factor(CurrentPriorityCode, levels = priority_levels),
+    WaitingListSpecialtyDesc = factor(WaitingListSpecialtyDesc, levels = specialty_levels),
+    PPPCategory = factor(PPPCategory, levels = ppp_category),
+#    PPPDesc = factor(PPPDesc, levels = ppp_levels), #too many levels, recheck
+    TreatmentCampusName = factor(TreatmentCampusName, levels = treament_campus_levels),
+    PlannedStayTypeDescription = factor(PlannedStayTypeDescription, levels = planned_stay_levels),
+    AdminCategory = factor(AdminCategory, levels = admin_levels)
+    )
 
 ```
-
-```{r}
-# Collect RMSE Metrics
-lr_rmse <- lr_results %>% collect_metrics()
-rf_rmse <- rf_results %>% collect_metrics()
-gbm_rmse <- gbm_results %>% collect_metrics()
-```
-
-```{r}
-# Combine RMSE Results
-rmse_results <- bind_rows(
-  lr_rmse %>% mutate(Model = "Linear Regression"),
-  rf_rmse %>% mutate(Model = "Random Forest"),
-  gbm_rmse %>% mutate(Model = "Gradient Boosting")
-)
-
-# View RMSE Comparison
-rmse_results %>%
-  select(Model, .metric, mean, std_err) %>%
-  arrange(mean) %>%
-  kable("html", caption = "Model RMSE Comparison") %>%
-  kable_styling(full_width = FALSE)
-```
-
-```{r old_one}
-# Temporarily error, recheck
-#Recheck
-surgery_metrics_wide <- surgery_metrics %>% 
-  select(id, log_metrics, ridge_metrics, lasso_metrics, rf_metrics, gbm_metrics) %>% 
-  unnest(cols = c(log_metrics, ridge_metrics, lasso_metrics, rf_metrics, gbm_metrics), names_sep = "_") %>%
-  
-  pivot_longer(cols = starts_with("reg_metrics_"), names_to = "metric", names_prefix = "reg_metrics_", values_to = "reg") %>%
-  pivot_longer(cols = starts_with("ridge_metrics_"), names_to = "metric", names_prefix = "ridge_metrics_", values_to = "ridge") %>%
-  pivot_longer(cols = starts_with("lasso_metrics_"), names_to = "metric", names_prefix = "lasso_metrics_", values_to = "lasso") %>%
-  pivot_longer(cols = starts_with("rf_metrics_"), names_to = "metric", names_prefix = "rf_metrics_", values_to = "rf") %>%
-  pivot_longer(cols = starts_with("gbm_metrics_"), names_to = "metric", names_prefix = "gbm_metrics_", values_to = "gbm") %>%
-  pivot_longer(cols = c(log, ridge, lasso, rf, gbm), names_to = "model", values_to = "value") %>%
-  pivot_wider(names_from = metric, values_from = value)
-
-# Calculate average metrics across folds for each model
-surgery_results <- surgery_metrics_wide %>% 
-  group_by(model) %>% 
-  summarize(
-    rmse = mean(rmse, na.rm = TRUE),
-    mae = mean(mae, na.rm = TRUE),
-    mape = mean(mape, na.rm = TRUE),
-    rsq = mean(rsq, na.rm = TRUE)
-  )
-
-print(surgery_results)
-```
-
