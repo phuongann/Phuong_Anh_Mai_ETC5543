@@ -1094,7 +1094,22 @@ surgery_results <- surgery_metrics_wide %>%
   )
 
 print(surgery_results)
+```
 
+```{r Visualize metrics, eval = FALSE}
+# Recheck
+# Visualize metrics across models using parallel coordinate plots
+# Temporarily remove mape as error
+surgery_metrics_wide %>%
+  select(id, model, rmse, mae, rsq) %>%
+  GGally::ggparcoord(
+    columns = 3:5,  # Only select the numeric columns (rmse, mae, rsq)
+    groupColumn = "model",  # Use model as the group column
+    showPoints = TRUE,
+    scale = "globalminmax"
+  ) +
+  labs(x = "Metric", y = "Value", title = "Model Performance Across Metrics") +
+  theme_minimal()
 ```
 
 ```{r}
