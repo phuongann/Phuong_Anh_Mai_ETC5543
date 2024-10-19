@@ -1,0 +1,15 @@
+---
+title: "ETC5543 Business analytics creative activity"
+author: "Phuong Anh Mai"
+format: pdf
+editor: visual
+---
+
+# Surgery Operating Length Prediction: A Patients Finder Tool
+
+## Abstract
+
+This report presents a predictive modeling project undertaken during an internship with **Monash Health** which also known as Victoria’s largest public health service. This whole project initially aims to enhance operational efficiency which aligns with Monash Health's mission to provide high-quality, patient-centered healthcare across diverse communities. (1) In this project, we will explore and predict a target which is surgery duration. The target variable is calculated based on patient demographics, procedure type, and other relevant factors obtained from Monash Health database. Various machine learning models were applied in this project including Random Forest, Ridge, Lasso, and Gradient Boosting Machine (GBM) to estimate surgery lengths. In the end of this project, I have archived Random Forest as the best model, and created a demo version of a patient searching tool which potentially helps Monash Health medical staff prioritize patients from the waiting list to fill available theatre slots.
+
+\pagebreak
+

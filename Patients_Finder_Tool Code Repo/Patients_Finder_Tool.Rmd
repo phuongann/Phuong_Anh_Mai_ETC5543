@@ -36,8 +36,8 @@ surgery_patients <- read.csv("data/joined_data.csv")
 # glimpse(surgery_patients)
 ```
 
-# Assumption
-- Get the data from Covid period, the surgery duration is still hold, and it should be the same for other period of time as well.
+# Assumption of the dataset
+- Get the data from Covid period onwards to remain the intergrity of the data pattern
 - Only consider adult patients ( > 17 years old)
 - Only case that determined as "Theatre" and without cancellation is listed
 
@@ -138,10 +138,6 @@ surgery_patients <- surgery_patients %>%
     TreatmentCampusName = as.factor(TreatmentCampusName),
     PlannedStayTypeDescription = as.factor(PlannedStayTypeDescription),
     AdminCategory = as.factor(AdminCategory),
-    # inpatient_episode_identifier = as.factor(inpatient_episode_identifier),
-    # PPPDesc = as.factor(PPPDesc),
-    # NumberOfSurgeries = as.numeric(NumberOfSurgeries),
-    # WaitingDays = as.numeric(WaitingDays)
   )
 
 # Calculate real-time of surgery
@@ -159,12 +155,9 @@ waiting_list <- waiting_list %>%
     CurrentPriorityCode = as.factor(CurrentPriorityCode),
     WaitingListSpecialtyDesc = as.factor(WaitingListSpecialtyDesc),
     PPPCategory = as.factor(PPPCategory),
-    # PPPDesc = as.factor(PPPDesc),
     TreatmentCampusName = as.factor(TreatmentCampusName),
     PlannedStayTypeDescription = as.factor(PlannedStayTypeDescription),
     AdminCategory = as.factor(AdminCategory)
-    # NumberOfSurgeries = as.numeric(NumberOfSurgeries),
-    # WaitingDays = as.numeric(WaitingDays)
   )
 ```
 
@@ -178,9 +171,6 @@ unwanted_specialty<- surgery_patients %>%
   filter(CaseCount < 10)
 
 surgery_patients <- surgery_patients[!surgery_patients$WaitingListSpecialtyDesc %in% unwanted_specialty$WaitingListSpecialtyDesc, ]
-
-# Check data created
-# summary(surgery_patients$SurgeryLength)
 
 # Remove negative values and outliers
 # Filter out Surgery within 10 hours, as the longer surgery requested more complex estimation
@@ -222,6 +212,7 @@ b <- ggplot(surgery_patients, aes(x = SurgeryLength)) +
 
 gridExtra::grid.arrange(a, b)
 ```
+
 **Insights**
 Most case within range under 250, just a few outliers that are outside this range. Our goal is to improve this Planned Theatre Case.
 
@@ -240,27 +231,17 @@ ggplot(surgery_patients, aes(x = SurgeryLength, y = fct_reorder(WaitingListSpeci
        y = "Specialty")
 ```
 
-## Caculate Waiting Days and create Waiting Category
+## Observe the Waiting Days
 
-```{r}
-# Recheck
+```{r Waiting days, echo = FALSE, warning=FALSE, message=FALSE}
 # Calculating Waiting day variables and creating category for each group
 surgery_patients <- surgery_patients %>%
-  mutate(WaitingDays = as.numeric(round(difftime(SurgeryStartDateTime, WaitingStartDateTime, units = "days")))) %>%
-  mutate(WaitingCategory = case_when(
-    WaitingDays <= 30 ~ "Short",
-    WaitingDays > 30 & WaitingDays <= 90 ~ "Medium",
-    WaitingDays > 90 ~ "Long"
-  ))
-
-# Displaying the result
-surgery_patients$WaitingCategory %>%
-  head(10)
+  mutate(WaitingDays = as.numeric(round(difftime(SurgeryStartDateTime, WaitingStartDateTime, units = "days"))))
 ```
 
 ### Calculate the proportion of patients waiting under 1 year by Specialty
 
-```{r}
+```{r proportion under 1 year by specialty, echo = FALSE, warning=FALSE, message=FALSE}
 # Proportion under 1 year by Specialty
 proportion_within_1_year_by_specialty <- surgery_patients %>%
   group_by(WaitingListSpecialtyDesc) %>%
@@ -272,7 +253,7 @@ proportion_within_1_year_by_specialty
 
 ### Plot the proportion of patients waiting under 1 year by Specialty
 
-```{r echo = FALSE, warning=FALSE, message=FALSE}
+```{r plot proportion, echo = FALSE, warning=FALSE, message=FALSE}
 ggplot(proportion_within_1_year_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, Proportion), y = Proportion)) +
   geom_segment(aes(xend = reorder(WaitingListSpecialtyDesc, Proportion), y = 0, yend = Proportion), color = "grey") +
   geom_point(size = 5, color = "#E69F00") +
@@ -679,7 +660,6 @@ test_data <- test_data %>%
     CurrentPriorityCode = factor(CurrentPriorityCode, levels = priority_levels),
     WaitingListSpecialtyDesc = factor(WaitingListSpecialtyDesc, levels = specialty_levels),
     PPPCategory = factor(PPPCategory, levels = ppp_category),
-#    PPPDesc = factor(PPPDesc, levels = ppp_levels), #too many levels, recheck
     TreatmentCampusName = factor(TreatmentCampusName, levels = treament_campus_levels),
     PlannedStayTypeDescription = factor(PlannedStayTypeDescription, levels = planned_stay_levels),
     AdminCategory = factor(AdminCategory, levels = admin_levels)
@@ -727,7 +707,6 @@ surgery_models <- surgery_folds %>%
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory, data = train_data)[, -1]
       y_train <- log(train_data$SurgeryLength)
       list(x_train = x_train, y_train = y_train)
@@ -738,7 +717,6 @@ surgery_models <- surgery_folds %>%
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory,
                           data = analysis(.x))),
     
@@ -784,7 +762,6 @@ surgery_models <- surgery_folds %>%
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory,
               data = train_data,
               mtry = mtry,
@@ -833,7 +810,6 @@ surgery_models <- surgery_folds %>%
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory,
               data = train_data,
               distribution = "gaussian",
@@ -886,7 +862,6 @@ surgery_predictions <- surgery_models %>%
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory, data = test_data)[, -1]
       y_test <- test_data$SurgeryLength
       list(x_test = x_test, y_test = y_test)
@@ -1027,13 +1002,11 @@ print(surgery_results)
 ```
 
 ```{r Visualize metrics, eval = FALSE}
-# Recheck
 # Visualize metrics across models using parallel coordinate plots
-# Temporarily remove mape as error
 surgery_metrics_wide %>%
   select(id, model, rmse, mae, rsq) %>%
   GGally::ggparcoord(
-    columns = 3:5,  # Only select the numeric columns (rmse, mae, rsq)
+    columns = 3:5,  # Only select the numeric columns 
     groupColumn = "model",  # Use model as the group column
     showPoints = TRUE,
     scale = "globalminmax"
@@ -1087,7 +1060,6 @@ x_train_full <- model.matrix(log(SurgeryLength)~ AgeGroupAtDateOfRemoval + Curre
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory, data = train_data)[, -1]
 y_train_full <- log(train_data$SurgeryLength)
 
@@ -1122,7 +1094,6 @@ rf_final_model <- randomForest(
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory,
   data = train_data,
   mtry = rf_best_params_overall$mtry,
@@ -1145,7 +1116,6 @@ gbm_final_model <- gbm(
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory,
   data = train_data,
   distribution = "gaussian",
@@ -1163,7 +1133,6 @@ x_test_full <- model.matrix(log(SurgeryLength) ~ AgeGroupAtDateOfRemoval + Curre
                                 WaitingListSpecialtyDesc + 
                                 PlannedStayTypeDescription +
                                 PPPCategory +
-                                #PPPDesc + 
                                 TreatmentCampusName + AdminCategory, data = test_data)[, -1]
 y_test_full <- test_data$SurgeryLength
 
