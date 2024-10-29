@@ -1,9 +1,11 @@
 ---
-title: "Patients_Finder_Tool"
+title: "Plot_table_Patients_Finder_Tool_Report"
 author: "Phuong Anh Mai"
-date: "2024-09-17"
+date: "2024-10-29"
 output: html_document
 ---
+
+This R markdown files contain all plot and table code for the Patients Finder Tool report. 
 
 ```{r setup, echo = FALSE, warning=FALSE, message=FALSE}
 library(tidyverse)
@@ -30,16 +32,7 @@ conflicts_prefer(dplyr::select)
 ```{r reading datasets, echo = FALSE, warning=FALSE, message = FALSE}
 waiting_list <- read_csv("data/new_waiting_list.csv")
 surgery_patients <- read.csv("data/joined_data.csv")
-
-# summary(waiting_list)
-# glimpse(waiting_list)
-# glimpse(surgery_patients)
 ```
-
-# Assumption of the dataset
-- Get the data from Covid period onwards to remain the intergrity of the data pattern
-- Only consider adult patients ( > 17 years old)
-- Only case that determined as "Theatre" and without cancellation is listed
 
 # Data wrangling 
 ## Convert Data types and Filter based on assumptions
@@ -212,9 +205,6 @@ b <- ggplot(surgery_patients, aes(x = SurgeryLength)) +
 gridExtra::grid.arrange(a, b)
 ```
 
-**Insights**
-Most cases lie within range from 10-250, just a few outliers that are outside this range. Our goal is to improve this Planned Theatre Case.
-
 ## Investigate the Surgery Length by Specialty
 
 ```{r visualize boxplot, echo = FALSE, warning=FALSE, message=FALSE}
@@ -236,34 +226,11 @@ ggplot(surgery_patients, aes(x = SurgeryLength, y = fct_reorder(WaitingListSpeci
 # Calculating Waiting day variables 
 surgery_patients <- surgery_patients %>%
   mutate(WaitingDays = as.numeric(round(difftime(SurgeryStartDateTime, WaitingStartDateTime, units = "days"))))
-```
 
-### Calculate the proportion of patients waiting under 1 year by Specialty
-
-```{r proportion under 1 year by specialty, echo = FALSE, warning=FALSE, message=FALSE}
-# Proportion under 1 year by Specialty
-proportion_within_1_year_by_specialty <- surgery_patients %>%
-  group_by(WaitingListSpecialtyDesc) %>%
-  summarise(Proportion = round(mean(WaitingDays <= 365), 4))%>% 
-  arrange(desc(Proportion))
-
-proportion_within_1_year_by_specialty
-```
-
-
-### The proportion of patients waiting under 1 year for the whole dataset
-
-```{r echo = FALSE, warning=FALSE, message=FALSE}
 # Proportion of people in waiting within 1 year
 proportion_within_1_year <- surgery_patients %>%
   summarise(Proportion = round(mean(WaitingDays <= 365),4))
 
-proportion_within_1_year
-```
-
-### Caculate and plot Average waiting time for particular Specialty
-
-```{r avg_waiting_day, echo = FALSE, warning=FALSE, message=FALSE}
 # Average waiting time for particular Specialty
 Average_waiting_day_by_specialty <- surgery_patients %>%
   group_by(WaitingListSpecialtyDesc) %>%
@@ -271,18 +238,6 @@ Average_waiting_day_by_specialty <- surgery_patients %>%
             CaseCount = n()) %>% 
   arrange(desc(Avearge_waiting_day))
 
-# Displaying the result
-Average_waiting_day_by_specialty %>%
-  kable("html", caption = "Average Waiting Days by Specialty") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1, " " = 1))  
-```
-
-```{r plot_avg_waiting_day, echo = FALSE, warning=FALSE, message=FALSE}
 # Plot Average waiting time for particular Specialty
 p <- ggplot(Average_waiting_day_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, Avearge_waiting_day), y = Avearge_waiting_day)) +
   geom_segment(aes(xend = reorder(WaitingListSpecialtyDesc, Avearge_waiting_day), y = 0, yend = Avearge_waiting_day), color = "grey") +
@@ -298,30 +253,11 @@ plotly_plot <- ggplotly(p)
 plotly_plot
 ```
 
-## Plot relationship among predictors
-
-```{r predictors relationship plot, eval = FALSE}
-surgery_data_plot <- surgery_patients %>%
-  select(SurgeryLength, AgeGroupAtDateOfRemoval, CurrentPriorityCode, 
-         WaitingListSpecialtyDesc, PPPDesc, TreatmentCampusName, AdminCategory)
-
-# Plot the relationships using GGally::ggpairs
-ggpairs(
-  surgery_data_plot, 
-  mapping = ggplot2::aes(color = AgeGroupAtDateOfRemoval), 
-  cardinality_threshold = 30,
-  lower = list(continuous = wrap("smooth", method = "lm", se = FALSE),  
-               combo = wrap("facethist", bins = 10)),  
-  diag = list(continuous = "densityDiag",  
-              discrete = "barDiag"),  
-  upper = list(continuous = wrap("cor", size = 3))  
-)
-```
 
 # Feature engineering: Extract interesting features
 ## Calculate and plot the Average Surgery length by Age Group
 
-```{r avg_age, echo = FALSE, warning=FALSE, message=FALSE}}
+```{r}
 # Calculating Average Surgery Length by Age Group
 AverageSurgeryLength_age <- surgery_patients %>% 
   group_by(AgeGroupAtDateOfRemoval) %>% 
@@ -329,16 +265,6 @@ AverageSurgeryLength_age <- surgery_patients %>%
   arrange(desc(AverageSurgeryLength_age))
 
 # Displaying the result
-AverageSurgeryLength_age %>%
-  kable("html", caption = "Average Surgery Length by Age Group") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, "Average Length" = 1)) 
-
-# Visualizing the result
 ggplot(AverageSurgeryLength_age, aes(x = AgeGroupAtDateOfRemoval, y = AverageSurgeryLength_age)) +
   geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +
   geom_text(aes(label = AverageSurgeryLength_age), hjust = -0.2, color = "black", size = 3.5) +
@@ -358,22 +284,12 @@ ggplot(AverageSurgeryLength_age, aes(x = AgeGroupAtDateOfRemoval, y = AverageSur
 
 ## Calculate and plot the Average Surgery length by Specialty
 
-```{r avg_specialty, echo = FALSE, warning=FALSE, message=FALSE}
+```{r}
 # Calculate the average of SurgeryLength by specialty
 Average_surgery_length_by_specialty <- surgery_patients %>%
   group_by(WaitingListSpecialtyDesc) %>%
   summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
   arrange(desc(AverageSurgeryLength))
-
-# Displaying the result
-Average_surgery_length_by_specialty %>%
-  kable("html", caption = "Average Surgery Length by Specialty") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1))  
 
 # Visualizing the result
 ggplot(Average_surgery_length_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, -AverageSurgeryLength), y = AverageSurgeryLength)) +
@@ -393,39 +309,14 @@ ggplot(Average_surgery_length_by_specialty, aes(x = reorder(WaitingListSpecialty
   )
 ```
 
-```{r spe_plot, echo = FALSE, warning=FALSE, message=FALSE}
-# Investigate relationships between Specialty and SurgeryLength
-ggplot() +
-  # Add geom_line using the average surgery length by specialty
-  geom_line(data = Average_surgery_length_by_specialty, aes(x = AverageSurgeryLength, 
-                                               y = fct_reorder(WaitingListSpecialtyDesc, AverageSurgeryLength),
-                                               group = 1), color = "blue", size = 1) +
-   theme_minimal() +
-  coord_flip() +
-  theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
-  labs(title = "Average Surgery Length by Specialty",
-       x = "Average Surgery Length (mins)",
-       y = "Specialty")
-```
-
 ## Calculate and plot the Average Surgery length by Admin category
 
-```{r avg_admin, echo = FALSE, warning=FALSE, message=FALSE}
+```{r}
 # Calculate average surgery length by Admin category
 Average_surgery_length_admin <- surgery_patients %>%
   group_by(AdminCategory) %>%
   summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
   arrange(desc(AverageSurgeryLength))
-
-# Displaying the result
-Average_surgery_length_admin %>%
-  kable("html", caption = "Average Surgery Length by Admin Category") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1)) 
 
 # Visualizing the result
 ggplot(Average_surgery_length_admin, aes(x = reorder(AdminCategory, -AverageSurgeryLength), y = AverageSurgeryLength)) +
@@ -447,7 +338,7 @@ ggplot(Average_surgery_length_admin, aes(x = reorder(AdminCategory, -AverageSurg
 
 ## Calculate and plot the Average Surgery length by Planned Stay
 
-```{r avg_plan_stay, echo = FALSE, warning=FALSE, message=FALSE}
+```{r}
 # Calculate average surgery length by Planned Stay
 Average_surgery_length_plan_stay <- surgery_patients %>%
   group_by(PlannedStayTypeDescription) %>%
@@ -467,22 +358,12 @@ Average_surgery_length_plan_stay %>%
 
 ## Calculate and plot the Average Surgery length by Treatment Campus
 
-```{r avg_treatment_campus, echo = FALSE, warning=FALSE, message=FALSE}
+```{r}
 # Calculate average surgery length by Treatment Campus
 Average_surgery_length_treatment_campus <- surgery_patients %>%
   group_by(TreatmentCampusName) %>%
   summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
   arrange(desc(AverageSurgeryLength))
-
-# Displaying the result
-Average_surgery_length_treatment_campus %>%
-  kable("html", caption = "Average Surgery Length by Treament Campus") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1)) 
 
 # Visualizing the results
 ggplot(Average_surgery_length_treatment_campus, aes(x = reorder(TreatmentCampusName, -AverageSurgeryLength), y = AverageSurgeryLength)) +
@@ -500,27 +381,16 @@ ggplot(Average_surgery_length_treatment_campus, aes(x = reorder(TreatmentCampusN
     axis.title.x = element_text(size = 14),
     plot.margin = ggplot2::margin(10, 10, 10, 10)
   )
-
 ```
 
 ## Calculate and plot the Average Surgery length by Current Priority Codes
 
-```{r avg_priority, echo = FALSE, warning=FALSE, message=FALSE}
+```{r}
 # Calculate average surgery length by Current Priority Codes
 Average_surgery_length_priority <- surgery_patients %>%
   group_by(CurrentPriorityCode) %>%
   summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
   arrange(desc(AverageSurgeryLength))
-
-# Displaying the result
-Average_surgery_length_priority %>%
-  kable("html", caption = "Average Surgery Length by Priority Code") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1)) 
 
 # Visualizing the results
 ggplot(Average_surgery_length_priority, aes(x = CurrentPriorityCode, y = AverageSurgeryLength)) +
@@ -538,47 +408,16 @@ ggplot(Average_surgery_length_priority, aes(x = CurrentPriorityCode, y = Average
     axis.title.x = element_text(size = 14),
     plot.margin = ggplot2::margin(10, 10, 10, 10)
   )
-
 ```
 
-## Observe the potential predictors by PPP description
+## Calculate and plot the Average Surgery Length by PPP Category
 
-```{r r original_ppp, echo = FALSE, warning=FALSE, message=FALSE}
-# Calculate average surgery length by PPP Description
-Average_surgery_length_ppp_desc <- surgery_patients %>%
-  group_by(PPPDesc) %>%
-  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
-  arrange(desc(AverageSurgeryLength))
-
-# Displaying the result
-Average_surgery_length_ppp_desc %>%
-  kable("html", caption = "Average Surgery Length by PPP decription") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1)) 
-```
-
-### Calculate and plot the Average Surgery Length by PPP Category
-
-```{r PPP Desc by group, echo = FALSE, warning=FALSE, message=FALSE}
+```{r PPP Desc by group}
 # Calculate average surgery length by PPP Category
 Average_surgery_length_ppp_category <- surgery_patients %>%
   group_by(PPPCategory) %>%
   summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
   arrange(desc(AverageSurgeryLength))
-
-# Displaying the result
-Average_surgery_length_ppp_category %>%
-  kable("html", caption = "Average Surgery Length by PPP Category") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-                full_width = FALSE, 
-                font_size = 14) %>%
-  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
-  column_spec(2, color = "blue", background = "lightgrey") %>% 
-  add_header_above(c(" " = 1, " " = 1)) 
 
 # Visualizing the result
 ggplot(Average_surgery_length_ppp_category, aes(x = reorder(PPPCategory, -AverageSurgeryLength), y = AverageSurgeryLength)) +
@@ -588,7 +427,7 @@ ggplot(Average_surgery_length_ppp_category, aes(x = reorder(PPPCategory, -Averag
   labs(title = "Average Surgery Length by PPP Category", 
        x = "PPP Category", 
        y = "Average Surgery Length (minutes)") +
-  theme_minimal() +  
+  theme_minimal() +  # Clean theme
   theme(
     plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
     axis.text.y = element_text(size = 12),  
@@ -986,14 +825,10 @@ ridge_best_lambdas <- surgery_models %>%
   mutate(best_lambda = map_dbl(ridge, "best_lambda")) %>%
   select(id, best_lambda)
 
-print(ridge_best_lambdas)
-
 # Extract best hyperparameters for Lasso Regression
 lasso_best_lambdas <- surgery_models %>%
   mutate(best_lambda = map_dbl(lasso, "best_lambda")) %>%
   select(id, best_lambda)
-
-print(lasso_best_lambdas)
 
 # Extract best hyperparameters for Random Forest
 rf_best_params <- surgery_models %>%
@@ -1003,8 +838,6 @@ rf_best_params <- surgery_models %>%
   select(id, rf_params) %>%
   unnest(cols = c(rf_params))
 
-print(rf_best_params)
-
 # Extract best hyperparameters for GBM
 gbm_best_params <- surgery_models %>%
   mutate(
@@ -1012,8 +845,6 @@ gbm_best_params <- surgery_models %>%
   ) %>%
   select(id, gbm_params) %>%
   unnest(cols = c(gbm_params))
-
-print(gbm_best_params)
 ```
 
 ## Apply the best hyper parameter to the training set
@@ -1150,28 +981,3 @@ test_set_metrics_wide <- test_set_metrics %>%
 # Display the wide format table
 print(test_set_metrics_wide)
 ```
-
-## Apply the best model to waiting_list
-
-```{r final_pred, echo = FALSE, warning=FALSE, message=FALSE}
-waiting_list <- waiting_list %>%
-  mutate(
-    AgeGroupAtDateOfRemoval = factor(AgeGroupAtDateOfRemoval, levels = age_levels),
-    CurrentPriorityCode = factor(CurrentPriorityCode, levels = priority_levels),
-    WaitingListSpecialtyDesc = factor(WaitingListSpecialtyDesc, levels = specialty_levels),
-    PPPCategory = factor(PPPCategory, levels = ppp_category),
-    TreatmentCampusName = factor(TreatmentCampusName, levels = treament_campus_levels),
-    PlannedStayTypeDescription = factor(PlannedStayTypeDescription, levels = planned_stay_levels),
-    AdminCategory = factor(AdminCategory, levels = admin_levels)
-  )
-
-# Predictions with Random Forest
-waiting_list_pred_log_rf <- predict(rf_final_model, newdata = waiting_list)
-
-# Return Prediction back to its scale
-waiting_list$PredictedSurgeryLength_RF <- round(exp(waiting_list_pred_log_rf))
-
-# Observe the prediction values
-waiting_list$PredictedSurgeryLength_RF
-```
-

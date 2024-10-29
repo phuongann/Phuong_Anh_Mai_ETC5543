@@ -1,0 +1,443 @@
+---
+title: "Presentation_Plot"
+author: "Phuong Anh Mai"
+date: "2024-10-29"
+output: html_document
+---
+
+This R markdown files contain all plot and table code for the Patients Finder Tool Presentation. 
+
+```{r setup, echo = FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(tidymodels)
+library(stringdist)
+library(glmnet)
+library(randomForest)
+library(gbm)
+library(yardstick)
+library(ggplot2)
+library(plotly)
+library(gridExtra)
+library(kableExtra)
+library(knitr)
+library(visdat)
+library(conflicted)
+
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+```
+
+```{r reading datasets, echo = FALSE, warning=FALSE, message = FALSE}
+waiting_list <- read_csv("data/new_waiting_list.csv")
+surgery_patients <- read.csv("data/joined_data.csv")
+```
+
+# Data wrangling 
+## Convert Data types and Filter based on assumptions
+
+```{r wrangling, echo = FALSE, warning=FALSE, message=FALSE}
+# Filter out patient > 17 years old
+surgery_patients <- surgery_patients %>% 
+  filter(AgeAtDateOfRemoval >17)
+
+# Getting waiting list data
+waiting_patients <- waiting_list %>% 
+  filter(ReportedRemovalDateTime == "NULL",
+         RemovalDateTime == "NULL")
+
+# Remove or impute missing data 
+surgery_patients <- na.omit(surgery_patients)
+
+# Remove unwanted columns
+unwanted <- c("Paed ENT",
+"Paed General Surgery",
+"Paed Oral & Maxillofacial Surgery",
+"Paed Orthopaedic Surgery",
+"Paed Plastic Surgery",
+"Paed Urology")
+
+surgery_patients <- surgery_patients[!surgery_patients$WaitingListSpecialtyDesc %in% unwanted, ]
+
+# Identify duplicates
+duplicates <- duplicated(surgery_patients)
+# Remove duplicates
+surgery_patients <- surgery_patients[!duplicated(surgery_patients), ]
+
+# glimpse(surgery_patients)
+
+# Create PPPCategory for both datasets
+surgery_patients <- surgery_patients %>%
+  mutate(PPPCategory = case_when(
+    grepl("arthro|joint|shoulder|knee|ligament|rotator cuff|ACL|hip|meniscus|spine|fusion|discectomy", 
+          PPPDesc, ignore.case = TRUE) ~ "Orthopedic",
+    grepl("heart|cardiac|bypass|coronary|valve|CABG|aortic|angioplasty|stent|aneurysm", 
+          PPPDesc, ignore.case = TRUE) ~ "Cardiac",
+    grepl("appendic|cholecyst|bowel|hernia|gastrectomy|colectomy|colorectal|laparotomy|gastrostomy|fundoplication", 
+          PPPDesc, ignore.case = TRUE) ~ "General Surgery",
+    grepl("breast|mastectomy|lumpectomy|reconstruction|augmentation|reduction|prosthesis|biopsy|oncology", 
+          PPPDesc, ignore.case = TRUE) ~ "Breast Surgery",
+    grepl("urology|kidney|nephrectomy|bladder|prostate|ureter|urethra|renal", 
+          PPPDesc, ignore.case = TRUE) ~ "Urology",
+    grepl("ENT|sinus|tonsil|adenoid|larynx|otoplasty|nose|nasal|septoplasty|ear|throat", 
+          PPPDesc, ignore.case = TRUE) ~ "ENT Surgery",
+    grepl("gynaecology|hysterectomy|cervix|uterus|fallopian|ovary|endometrial|ablation|vaginal", 
+          PPPDesc, ignore.case = TRUE) ~ "Gynaecology",
+    grepl("neurosurgery|brain|craniotomy|spinal|meninges|nerve|tumor|neuro", 
+          PPPDesc, ignore.case = TRUE) ~ "Neurosurgery",
+    TRUE ~ "Other"  # Default category if none of the above matches
+  ))
+
+
+waiting_list <- waiting_list %>%
+  mutate(PPPCategory = case_when(
+    grepl("arthro|joint|shoulder|knee|ligament|rotator cuff|ACL|hip|meniscus|spine|fusion|discectomy", 
+          PPPDesc, ignore.case = TRUE) ~ "Orthopedic",
+    grepl("heart|cardiac|bypass|coronary|valve|CABG|aortic|angioplasty|stent|aneurysm", 
+          PPPDesc, ignore.case = TRUE) ~ "Cardiac",
+    grepl("appendic|cholecyst|bowel|hernia|gastrectomy|colectomy|colorectal|laparotomy|gastrostomy|fundoplication", 
+          PPPDesc, ignore.case = TRUE) ~ "General Surgery",
+    grepl("breast|mastectomy|lumpectomy|reconstruction|augmentation|reduction|prosthesis|biopsy|oncology", 
+          PPPDesc, ignore.case = TRUE) ~ "Breast Surgery",
+    grepl("urology|kidney|nephrectomy|bladder|prostate|ureter|urethra|renal", 
+          PPPDesc, ignore.case = TRUE) ~ "Urology",
+    grepl("ENT|sinus|tonsil|adenoid|larynx|otoplasty|nose|nasal|septoplasty|ear|throat", 
+          PPPDesc, ignore.case = TRUE) ~ "ENT Surgery",
+    grepl("gynaecology|hysterectomy|cervix|uterus|fallopian|ovary|endometrial|ablation|vaginal", 
+          PPPDesc, ignore.case = TRUE) ~ "Gynaecology",
+    grepl("neurosurgery|brain|craniotomy|spinal|meninges|nerve|tumor|neuro", 
+          PPPDesc, ignore.case = TRUE) ~ "Neurosurgery",
+    TRUE ~ "Other"  # Default category 
+  ))
+
+# Convert data types
+surgery_patients <- surgery_patients %>%
+  mutate(
+    PlannedTheatreTimeInMins = as.numeric(PlannedTheatreTimeInMins),
+    ArrivedTheatreDateTime = as.POSIXct(ArrivedTheatreDateTime, format = "%Y-%m-%d %H:%M:%S"),
+    OutOfTheatreDateTime = as.POSIXct(OutOfTheatreDateTime, format = "%Y-%m-%d %H:%M:%S"),
+    WaitingStartDateTime = as.POSIXct(WaitingStartDateTime, format = "%Y-%m-%d %H:%M:%S"),
+    SurgeryStartDateTime = as.POSIXct(SurgeryStartDateTime, format = "%Y-%m-%d %H:%M:%S"),
+    SurgeryEndDateTime = as.POSIXct(SurgeryEndDateTime, format = "%Y-%m-%d %H:%M:%S"),
+    IntoTheatreDateTime = as.POSIXct(IntoTheatreDateTime, format = "%Y-%m-%d %H:%M:%S"),
+    AgeGroupAtDateOfRemoval = as.factor(AgeGroupAtDateOfRemoval),
+    CurrentPriorityCode = as.factor(CurrentPriorityCode),
+    PPPCategory = as.factor(PPPCategory),
+    # Use for model fitting
+    WaitingListSpecialtyDesc = as.factor(WaitingListSpecialtyDesc),
+    OperatingDrCarerName = as.factor(OperatingDrCarerName),
+    TreatmentCampusName = as.factor(TreatmentCampusName),
+    PlannedStayTypeDescription = as.factor(PlannedStayTypeDescription),
+    AdminCategory = as.factor(AdminCategory),
+  )
+
+# Calculate real-time of surgery
+surgery_patients <- surgery_patients %>% 
+  mutate(SurgeryLength = round((difftime(OutOfTheatreDateTime, IntoTheatreDateTime, units = "mins")),4)) %>% 
+  mutate(SurgeryLength = as.numeric((SurgeryLength)))
+
+# Convert Surgery Length data types
+surgery_patients <- surgery_patients %>%
+mutate(SurgeryLength = as.numeric(SurgeryLength))
+
+waiting_list <- waiting_list %>%
+  mutate(
+    AgeGroupAtDateOfRemoval = as.factor(AgeGroupAtDateOfRemoval),
+    CurrentPriorityCode = as.factor(CurrentPriorityCode),
+    WaitingListSpecialtyDesc = as.factor(WaitingListSpecialtyDesc),
+    PPPCategory = as.factor(PPPCategory),
+    TreatmentCampusName = as.factor(TreatmentCampusName),
+    PlannedStayTypeDescription = as.factor(PlannedStayTypeDescription),
+    AdminCategory = as.factor(AdminCategory)
+  )
+```
+
+## Further refine of the dataset
+
+```{r surgery length, echo = FALSE, warning=FALSE, message=FALSE}}
+# Remove Specialty with under 10 cases
+unwanted_specialty<- surgery_patients %>% 
+  group_by(WaitingListSpecialtyDesc) %>%
+  summarise(CaseCount = n()) %>% 
+  filter(CaseCount < 10)
+
+surgery_patients <- surgery_patients[!surgery_patients$WaitingListSpecialtyDesc %in% unwanted_specialty$WaitingListSpecialtyDesc, ]
+
+# Remove negative values and outliers
+# Filter out Surgery within 10 hours, as the longer surgery requested more complex estimation
+surgery_patients <- surgery_patients %>% 
+  na.omit() %>% 
+  filter(SurgeryLength > 10) %>% 
+  filter(SurgeryLength < 600) %>% 
+  filter(PlannedTheatreTimeInMins > 10) %>% 
+  filter(PlannedTheatreTimeInMins < 600)
+```
+
+# Exploratory Data Analysis (EDA)
+## Observe the human estimation and real-time of Surgery Length
+
+```{r distribution visualize, echo = FALSE, warning=FALSE, message=FALSE}
+# Visualize the distribution of Planned Theatre Time
+a <- ggplot(surgery_patients, aes(x = PlannedTheatreTimeInMins)) +
+  geom_histogram(fill = "blue", color = "white", bins = 30) +
+  theme_minimal() +
+  labs(title = "Distribution of Planned Theatre Time in Minutes",
+       x = "Planned Theatre Time (mins)")
+
+# Visualize the distribution of Time Difference
+b <- ggplot(surgery_patients, aes(x = SurgeryLength)) +
+  geom_histogram( fill = "#E69F00", color = "white", bins = 30) +
+  theme_minimal() +
+  labs(title = "Distribution of Surgery Time in Minutes",
+       x = "Operating Theatre Time (mins)")
+
+gridExtra::grid.arrange(a, b)
+```
+
+## Investigate the Surgery Length by Specialty
+
+```{r visualize boxplot, echo = FALSE, warning=FALSE, message=FALSE}
+# Boxplot of SurgeryLength with an additional geom_line for average
+ggplot(surgery_patients, aes(x = SurgeryLength, y = fct_reorder(WaitingListSpecialtyDesc, SurgeryLength, .fun = median))) +
+  geom_boxplot(fill = "#E69F00") +
+  
+  theme_minimal() +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
+  labs(title = "Surgery Length by Specialty",
+       x = "Surgery Length (mins)",
+       y = "Specialty")
+```
+
+## Observe the Waiting Days
+
+```{r Waiting days, echo = FALSE, warning=FALSE, message=FALSE}
+# Calculating Waiting day variables 
+surgery_patients <- surgery_patients %>%
+  mutate(WaitingDays = as.numeric(round(difftime(SurgeryStartDateTime, WaitingStartDateTime, units = "days"))))
+
+# Proportion of people in waiting within 1 year
+proportion_within_1_year <- surgery_patients %>%
+  summarise(Proportion = round(mean(WaitingDays <= 365),4))
+
+# Average waiting time for particular Specialty
+Average_waiting_day_by_specialty <- surgery_patients %>%
+  group_by(WaitingListSpecialtyDesc) %>%
+  summarise(Avearge_waiting_day = round(mean(WaitingDays)),
+            CaseCount = n()) %>% 
+  arrange(desc(Avearge_waiting_day))
+
+# Plot Average waiting time for particular Specialty
+p <- ggplot(Average_waiting_day_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, Avearge_waiting_day), y = Avearge_waiting_day)) +
+  geom_segment(aes(xend = reorder(WaitingListSpecialtyDesc, Avearge_waiting_day), y = 0, yend = Avearge_waiting_day), color = "grey") +
+  geom_point(aes(size = CaseCount), color = "#E69F00")  +
+  theme_minimal() +
+  labs(title = "Average Waiting Day by Specialty",
+       x = "Specialty",
+       y = "Avearge waiting day") +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1))
+
+plotly_plot <- ggplotly(p)
+
+plotly_plot
+```
+
+# Feature engineering: Extract interesting features
+## Calculate and plot the Average Surgery length by Age Group
+
+```{r}
+# Calculating Average Surgery Length by Age Group
+AverageSurgeryLength_age <- surgery_patients %>% 
+  group_by(AgeGroupAtDateOfRemoval) %>% 
+  summarise(AverageSurgeryLength_age = round(mean(SurgeryLength, na.rm = TRUE))) %>% 
+  arrange(desc(AverageSurgeryLength_age))
+
+# Displaying the result
+ggplot(AverageSurgeryLength_age, aes(x = AgeGroupAtDateOfRemoval, y = AverageSurgeryLength_age)) +
+  geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +
+  geom_text(aes(label = AverageSurgeryLength_age), hjust = -0.2, color = "black", size = 3.5) +
+  coord_flip() +
+  labs(title = "Average Surgery Length by Age Group", 
+       x = "Age Groups", 
+       y = "Average Surgery Length (minutes)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    plot.margin = ggplot2::margin(10, 10, 10, 10)
+  )
+```
+
+## Calculate and plot the Average Surgery length by Specialty
+
+```{r}
+# Calculate the average of SurgeryLength by specialty
+Average_surgery_length_by_specialty <- surgery_patients %>%
+  group_by(WaitingListSpecialtyDesc) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
+  arrange(desc(AverageSurgeryLength))
+
+# Visualizing the result
+ggplot(Average_surgery_length_by_specialty, aes(x = reorder(WaitingListSpecialtyDesc, -AverageSurgeryLength), y = AverageSurgeryLength)) +
+  geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +
+  geom_text(aes(label = AverageSurgeryLength), hjust = -0.2, color = "black", size = 3.5) +
+  coord_flip() +
+  labs(title = "Average Surgery Length by Specialty", 
+       x = "Specialty", 
+       y = "Average Surgery Length (minutes)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    plot.margin = ggplot2::margin(10, 10, 10, 10)
+  )
+```
+
+### Line graph for Average Surgery Length by Specialty
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+# Investigate relationships between Specialty and SurgeryLength
+ggplot() +
+  # Add geom_line using the average surgery length by specialty
+  geom_line(data = Average_surgery_length_by_specialty, aes(x = AverageSurgeryLength, 
+                                               y = fct_reorder(WaitingListSpecialtyDesc, AverageSurgeryLength),
+                                               group = 1), color = "blue", size = 1) +
+   theme_minimal() +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 55, hjust = 1)) +
+  labs(title = "Average Surgery Length by Specialty",
+       x = "Average Surgery Length (mins)",
+       y = "Specialty")
+```
+
+## Calculate and plot the Average Surgery length by Admin category
+
+```{r}
+# Calculate average surgery length by Admin category
+Average_surgery_length_admin <- surgery_patients %>%
+  group_by(AdminCategory) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
+  arrange(desc(AverageSurgeryLength))
+
+# Visualizing the result
+ggplot(Average_surgery_length_admin, aes(x = reorder(AdminCategory, -AverageSurgeryLength), y = AverageSurgeryLength)) +
+  geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +
+  geom_text(aes(label = AverageSurgeryLength), hjust = -0.2, color = "black", size = 3.5) +
+  coord_flip() +
+  labs(title = "Average Surgery Length by Admin Category", 
+       x = "Admin Category", 
+       y = "Average Surgery Length (minutes)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    plot.margin = ggplot2::margin(10, 10, 10, 10) 
+  )
+```
+
+## Calculate and plot the Average Surgery length by Planned Stay
+
+```{r}
+# Calculate average surgery length by Planned Stay
+Average_surgery_length_plan_stay <- surgery_patients %>%
+  group_by(PlannedStayTypeDescription) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
+  arrange(desc(AverageSurgeryLength))
+
+# Displaying the result
+Average_surgery_length_plan_stay %>%
+  kable("html", caption = "Average Surgery Length by Planned Stay") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                full_width = FALSE, 
+                font_size = 14) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE) %>%  
+  column_spec(2, color = "blue", background = "lightgrey") %>% 
+  add_header_above(c(" " = 1, " " = 1)) 
+```
+
+## Calculate and plot the Average Surgery length by Treatment Campus
+
+```{r}
+# Calculate average surgery length by Treatment Campus
+Average_surgery_length_treatment_campus <- surgery_patients %>%
+  group_by(TreatmentCampusName) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
+  arrange(desc(AverageSurgeryLength))
+
+# Visualizing the results
+ggplot(Average_surgery_length_treatment_campus, aes(x = reorder(TreatmentCampusName, -AverageSurgeryLength), y = AverageSurgeryLength)) +
+  geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +
+  geom_text(aes(label = AverageSurgeryLength), hjust = -0.2, color = "black", size = 3.5) +
+  coord_flip() +
+  labs(title = "Average Surgery Length by Treatment Campus", 
+       x = "Treatment Campus", 
+       y = "Average Surgery Length (minutes)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    plot.margin = ggplot2::margin(10, 10, 10, 10)
+  )
+```
+
+## Calculate and plot the Average Surgery length by Current Priority Codes
+
+```{r}
+# Calculate average surgery length by Current Priority Codes
+Average_surgery_length_priority <- surgery_patients %>%
+  group_by(CurrentPriorityCode) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
+  arrange(desc(AverageSurgeryLength))
+
+# Visualizing the results
+ggplot(Average_surgery_length_priority, aes(x = CurrentPriorityCode, y = AverageSurgeryLength)) +
+  geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +
+  geom_text(aes(label = AverageSurgeryLength), hjust = -0.2, color = "black", size = 3.5) +
+  coord_flip() +
+  labs(title = "Average Surgery Length by Priority Code", 
+       x = "Priority Code", 
+       y = "Average Surgery Length (minutes)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.text.y = element_text(size = 12),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    plot.margin = ggplot2::margin(10, 10, 10, 10)
+  )
+```
+
+## Calculate and plot the Average Surgery Length by PPP Category
+
+```{r PPP Desc by group}
+# Calculate average surgery length by PPP Category
+Average_surgery_length_ppp_category <- surgery_patients %>%
+  group_by(PPPCategory) %>%
+  summarise(AverageSurgeryLength = round(mean(SurgeryLength, na.rm = TRUE)))%>% 
+  arrange(desc(AverageSurgeryLength))
+
+# Visualizing the result
+ggplot(Average_surgery_length_ppp_category, aes(x = reorder(PPPCategory, -AverageSurgeryLength), y = AverageSurgeryLength)) +
+  geom_bar(stat = "identity", fill = "#E69F00", width = 0.7) +  
+  geom_text(aes(label = AverageSurgeryLength), hjust = -0.2, color = "black", size = 3.5) +  
+  coord_flip() +  
+  labs(title = "Average Surgery Length by PPP Category", 
+       x = "PPP Category", 
+       y = "Average Surgery Length (minutes)") +
+  theme_minimal() +  # Clean theme
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    axis.text.y = element_text(size = 12),  
+    axis.title.y = element_text(size = 14),  
+    axis.title.x = element_text(size = 14),  
+    plot.margin = ggplot2::margin(10, 10, 10, 10)  
+  )
+```
